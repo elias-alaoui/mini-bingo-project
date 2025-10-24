@@ -1,0 +1,7 @@
+# Runtime / CLI (optional but handy for terminal output & config)
+rich==13.7.1        # pretty terminal tables/output
+pyyaml==6.0.2       # read config.yaml
+
+# Testing
+pytest==8.3.3
+coverage==7.6.1
