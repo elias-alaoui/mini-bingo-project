@@ -12,11 +12,11 @@ Welcome to the Mini Bingo Game docs. This space contains the vision, backlog, us
 ---
 
 ## Quick Links
-- [Vision Statement](./README.md)
-- [Product Backlog](./README.md)
-- [User Stories](./README.md)
-- [Sprint Plan](./README.md)
-- [Gameplay Instructions](./README.md)
+- [Vision Statement](../README.md)
+- [Product Backlog](../README.md)
+- [User Stories](../README.md)
+- [Sprint Plan](../README.md)
+- [Gameplay Instructions](../README.md)
 
 ---
 
@@ -34,3 +34,4 @@ Welcome to the Mini Bingo Game docs. This space contains the vision, backlog, us
 - Generate a valid 3×5 card with 15 unique numbers in range.
 - Randomize placement and display clearly in the terminal.
 - Add tests for dimensions, uniqueness, range, and rendering.
+
