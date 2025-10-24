@@ -113,10 +113,6 @@ mini_bingo_game/
 │
 └── docs/
     ├── index.md
-    ├── vision_statement.md
-    ├── product_backlog.md
-    ├── user_stories.md
-    ├── sprint_plan.md
     └── gameplay_instructions.md
 ```
 
