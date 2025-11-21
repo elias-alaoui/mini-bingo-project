@@ -72,13 +72,13 @@ SETTINGS = load_settings()
 
 # ---------------- Rendering helpers ---------------- #
 def print_marked_card(card: List[List[int]], marked: Set[int]) -> None:
-    """Show player's card with marked numbers bracketed."""
+    """Show player's card with marked numbers bracketed, properly aligned."""
     top = "┌" + ("────┬" * (BOARD_COLS - 1)) + "────┐"
     mid = "├" + ("────┼" * (BOARD_COLS - 1)) + "────┤"
     bot = "└" + ("────┴" * (BOARD_COLS - 1)) + "────┘"
 
     def row_fmt(values: List[str]) -> str:
-        return " │ " + " │ ".join(values) + " │"
+        return "│" + "│".join(values) + "│"
 
     print(top)
     for r in range(BOARD_ROWS):
@@ -86,9 +86,9 @@ def print_marked_card(card: List[List[int]], marked: Set[int]) -> None:
         for c in range(BOARD_COLS):
             v = card[r][c]
             if v in marked:
-                row.append(f"[{v:2d}]")
+                row.append(f"[{v:2d}]")  
             else:
-                row.append(f" {v:2d} ")
+                row.append(f" {v:2d} ")  
         print(row_fmt(row))
         if r < BOARD_ROWS - 1:
             print(mid)
@@ -303,3 +303,4 @@ def play_game(seed: Optional[int] = None) -> None:
 
 if __name__ == "__main__":
     play_game(seed=None)
+
