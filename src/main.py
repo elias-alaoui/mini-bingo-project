@@ -1,6 +1,6 @@
 # src/main.py
 """
-Mini Bingo Game — full version (NO timeouts)
+Mini Bingo Game — full version (NO timeouts, FIXED grid printing)
 
 Implements:
 - 3x5 card per player
@@ -10,6 +10,7 @@ Implements:
 - penalties for wrong Y/N and false claims
 - multiplayer with bots (easy/medium/hard)
 - instructions screen
+- pretty, correctly aligned 3x5 grid everywhere
 
 Run:
     python -m src.main
@@ -20,9 +21,10 @@ from __future__ import annotations
 import os
 from typing import Dict, List, Optional, Set
 
-from game.bingo_card import complete_card, print_complete_card, BOARD_ROWS, BOARD_COLS
+from game.bingo_card import complete_card, BOARD_ROWS, BOARD_COLS
 from game.number_draw import NumberDrawer
 from game.player import Player
+
 
 # ---------------- Settings loading ---------------- #
 DEFAULT_SETTINGS = {
@@ -63,33 +65,48 @@ def load_settings() -> Dict[str, float | int]:
     except ImportError:
         pass
     except Exception as e:
-        print(f" Settings load failed: {e}. Using defaults.")
+        print(f"Settings load failed: {e}. Using defaults.")
     return settings
 
 
 SETTINGS = load_settings()
 
 
-# ---------------- Rendering helpers ---------------- #
-def print_marked_card(card: List[List[int]], marked: Set[int]) -> None:
-    """Show player's card with marked numbers bracketed."""
-    top = "┌" + ("────┬" * (BOARD_COLS - 1)) + "────┐"
-    mid = "├" + ("────┼" * (BOARD_COLS - 1)) + "────┤"
-    bot = "└" + ("────┴" * (BOARD_COLS - 1)) + "────┘"
+# ---------------- PRETTY CARD PRINTER (NEW) ---------------- #
+def print_pretty_card(
+    card: List[List[int]],
+    marked: Optional[Set[int]] = None,
+    *,
+    title: Optional[str] = None,
+) -> None:
+    """
+    Print a perfectly aligned 3x5 bingo card.
 
-    def row_fmt(values: List[str]) -> str:
-        return " │ " + " │ ".join(values) + " │"
+    - Each cell is width=4.
+      Unmarked: ' 12 '
+      Marked:   '[12]'
+    - Borders are generated from the same width, so nothing spills out.
+    """
+    if marked is None:
+        marked = set()
+
+    cell_w = 4
+    horiz = "─" * cell_w
+
+    top = "┌" + "┬".join([horiz] * BOARD_COLS) + "┐"
+    mid = "├" + "┼".join([horiz] * BOARD_COLS) + "┤"
+    bot = "└" + "┴".join([horiz] * BOARD_COLS) + "┘"
+
+    def cell(v: int) -> str:
+        return f"[{v:2d}]" if v in marked else f" {v:2d} "
+
+    if title:
+        print("\n" + title)
 
     print(top)
     for r in range(BOARD_ROWS):
-        row: List[str] = []
-        for c in range(BOARD_COLS):
-            v = card[r][c]
-            if v in marked:
-                row.append(f"[{v:2d}]")
-            else:
-                row.append(f" {v:2d} ")
-        print(row_fmt(row))
+        row_cells = [cell(card[r][c]) for c in range(BOARD_COLS)]
+        print("│" + "│".join(row_cells) + "│")
         if r < BOARD_ROWS - 1:
             print(mid)
     print(bot)
@@ -149,7 +166,7 @@ def choose_mode() -> int:
         ans = input(prompt).strip()
         if ans in ("1", "2", "3"):
             return int(ans)
-        print(" Invalid choice. Type 1, 2, or 3.")
+        print("Invalid choice. Type 1, 2, or 3.")
 
 
 def create_players(mode: int) -> List[Player]:
@@ -183,7 +200,9 @@ def play_game(seed: Optional[int] = None) -> None:
     human = players[0]
     pool_total = sum(p.points for p in players)
 
-    print_complete_card(human.card)
+    #FIX: use pretty printer instead of print_complete_card
+    print_pretty_card(human.card, title="Your Bingo Card (3×5):")
+
     print(f"\nPlayers in this match: {len(players)} (You + {len(players)-1} bots)")
     print(f"Starting points each: {SETTINGS['starting_points_per_player']}")
     print(f"Total point pool: {pool_total}\n")
@@ -201,25 +220,25 @@ def play_game(seed: Optional[int] = None) -> None:
                 break
 
             print(f"\n========== TURN {turn} ==========")
-            print(f" Number drawn: {drawn}")
+            print(f"Number drawn: {drawn}")
 
             # --- Bots play ---
             for bot in players[1:]:
                 has_num, claim = bot.bot_play_turn(drawn)
                 if claim == "L" and not bot.has_line:
                     reward = bot.award_line(pool_total)
-                    print(f" {bot.name} claims a LINE! +{reward} points. (Total: {bot.points})")
+                    print(f"🤖 {bot.name} claims a LINE! +{reward} points. (Total: {bot.points})")
                 if claim == "B" and not bot.has_bingo:
                     reward = bot.award_bingo(pool_total)
-                    print(f" {bot.name} claims BINGO! +{reward} points. (Total: {bot.points})")
+                    print(f"🤖 {bot.name} claims BINGO! +{reward} points. (Total: {bot.points})")
                     bingo_winner = bot
 
             if bingo_winner:
                 break
 
             # --- Human turn ---
-            print("\nYour card right now:")
-            print_marked_card(human.card, human.marked)
+            # FIX: use pretty printer for live view too
+            print_pretty_card(human.card, human.marked, title="Your card right now:")
 
             try:
                 ans = input(f"\nDo you have {drawn}? (Y/N): ")
@@ -228,7 +247,7 @@ def play_game(seed: Optional[int] = None) -> None:
 
             ans = ans.strip().upper()
             if ans not in ("Y", "N"):
-                print(" Invalid input. Treated as 'N' and -1 point penalty.")
+                print("Invalid input. Treated as 'N' and -1 point penalty.")
                 human.penalize_wrong_number()
                 ans = "N"
 
@@ -237,13 +256,13 @@ def play_game(seed: Optional[int] = None) -> None:
             if ans == "Y":
                 if actually_on_card:
                     human.mark_number(drawn)
-                    print(" Marked!")
+                    print("Marked!")
                 else:
-                    print(" That number is NOT on your card. -1 point.")
+                    print("That number is NOT on your card. -1 point.")
                     human.penalize_wrong_number()
             else:  # ans == "N"
                 if actually_on_card:
-                    print(" It WAS on your card. Missed it! -1 point.")
+                    print("It WAS on your card. Missed it! -1 point.")
                     human.penalize_wrong_number()
 
             claim: Optional[str] = None
@@ -255,7 +274,7 @@ def play_game(seed: Optional[int] = None) -> None:
 
                 c = c.strip().upper()
                 if c not in ("L", "B", "N"):
-                    print(" Invalid claim input. No claim.")
+                    print("Invalid claim input. No claim.")
                     c = "N"
                 if c in ("L", "B"):
                     claim = c
@@ -264,18 +283,18 @@ def play_game(seed: Optional[int] = None) -> None:
             if claim == "L":
                 if (not human.has_line) and human.check_line():
                     reward = human.award_line(pool_total)
-                    print(f" LINE COMPLETE! You gain +{reward} points.")
+                    print(f"LINE COMPLETE! You gain +{reward} points.")
                 else:
-                    print(" False Line claim. -3 points.")
+                    print("False Line claim. -3 points.")
                     human.penalize_false_claim()
 
             if claim == "B":
                 if (not human.has_bingo) and human.check_bingo():
                     reward = human.award_bingo(pool_total)
-                    print(f" BINGO!!! You gain +{reward} points.")
+                    print(f"BINGO!!! You gain +{reward} points.")
                     bingo_winner = human
                 else:
-                    print(" False Bingo claim. -3 points.")
+                    print("False Bingo claim. -3 points.")
                     human.penalize_false_claim()
 
             print(f"\nYour points: {human.points}")
@@ -285,12 +304,12 @@ def play_game(seed: Optional[int] = None) -> None:
                 break
 
     except KeyboardInterrupt:
-        print("\n\n Game interrupted by user.")
+        print("\n\nGame interrupted by user.")
 
     # ---------------- End game summary ---------------- #
     print("\n================== GAME OVER ==================")
     if bingo_winner:
-        print(f"Winner: {bingo_winner.name} ")
+        print(f"Winner: {bingo_winner.name}")
     else:
         print("No Bingo was achieved.")
 
