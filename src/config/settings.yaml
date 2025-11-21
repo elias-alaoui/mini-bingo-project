@@ -5,7 +5,6 @@ board:
   number_max: 90
 
 game:
-  input_timeout_seconds: 3
   starting_points_per_player: 100
 
 rewards:
@@ -23,3 +22,4 @@ modes:
     bots: 9
   hard:
     bots: 19
+
