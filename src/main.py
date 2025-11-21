@@ -1,12 +1,15 @@
 # src/main.py
-# src/main.py
 """
-Mini Bingo Game — main entrypoint
+Mini Bingo Game — full version
 
-Wires together:
-- game/bingo_card.py   → generate_empty, random_generated, complete_card, print_complete_card
-- game/number_draw.py  → check_card (draw numbers without repetition + visual snapshot)
-- game/input_handler.py→ ask_yes_no, ask_claim, handle_player_turn
+Implements:
+- 3x5 card per player
+- number drawing 1-90 without repetition
+- timed user input window (3s)
+- line / bingo claims with rewards
+- penalties for wrong Y/N and false claims
+- multiplayer with bots (easy/medium/hard)
+- instructions screen
 
 Run:
     python -m src.main
@@ -14,101 +17,332 @@ Run:
 
 from __future__ import annotations
 
-from typing import List, Set
+import os
+import sys
+import time
+import signal
+from typing import Dict, List, Optional, Set, Tuple
 
 from game.bingo_card import complete_card, print_complete_card, BOARD_ROWS, BOARD_COLS
-from game.number_draw import check_card
-from game.input_handler import handle_player_turn
+from game.number_draw import NumberDrawer
+from game.player import Player
+
+# ---------------- Settings loading ---------------- #
+DEFAULT_SETTINGS = {
+    "input_timeout_seconds": 3,
+    "starting_points_per_player": 100,
+    "line_percent": 0.10,
+    "bingo_percent": 0.50,
+    "bots_easy": 4,
+    "bots_medium": 9,
+    "bots_hard": 19,
+}
 
 
-# ---------- Helpers for validating user claims ---------- #
-def _is_line_complete(card: List[List[int]], drawn: Set[int]) -> bool:
-    """Return True if any FULL row in the 3x5 card is completely drawn."""
+def load_settings() -> Dict[str, float | int]:
+    """Load YAML settings if PyYAML is installed; otherwise fallback to defaults."""
+    settings = DEFAULT_SETTINGS.copy()
+    try:
+        import yaml  # type: ignore
+        path = os.path.join(os.path.dirname(__file__), "config", "settings.yaml")
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            settings["input_timeout_seconds"] = data.get("game", {}).get("input_timeout_seconds", settings["input_timeout_seconds"])
+            settings["starting_points_per_player"] = data.get("game", {}).get("starting_points_per_player", settings["starting_points_per_player"])
+            settings["line_percent"] = data.get("rewards", {}).get("line_percent", settings["line_percent"])
+            settings["bingo_percent"] = data.get("rewards", {}).get("bingo_percent", settings["bingo_percent"])
+            modes = data.get("modes", {})
+            settings["bots_easy"] = modes.get("easy", {}).get("bots", settings["bots_easy"])
+            settings["bots_medium"] = modes.get("medium", {}).get("bots", settings["bots_medium"])
+            settings["bots_hard"] = modes.get("hard", {}).get("bots", settings["bots_hard"])
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f" Settings load failed: {e}. Using defaults.")
+    return settings
+
+
+SETTINGS = load_settings()
+
+
+# ---------------- Timed input ---------------- #
+class _Timeout(Exception):
+    pass
+
+
+def _alarm_handler(signum, frame):
+    raise _Timeout
+
+
+def timed_input(prompt: str, timeout: int) -> Optional[str]:
+    """
+    Read input with a timeout.
+    - On Unix: uses signal.alarm.
+    - On Windows or unsupported environments: falls back to blocking input.
+    Returns None if timed out.
+    """
+    if os.name != "posix":
+        # Fallback without hard timeout
+        try:
+            return input(prompt)
+        except EOFError:
+            return None
+
+    signal.signal(signal.SIGALRM, _alarm_handler)
+    signal.alarm(timeout)
+    try:
+        ans = input(prompt)
+        signal.alarm(0)
+        return ans
+    except _Timeout:
+        signal.alarm(0)
+        return None
+    except EOFError:
+        signal.alarm(0)
+        return None
+
+
+# ---------------- Rendering helpers ---------------- #
+def print_marked_card(card: List[List[int]], marked: Set[int]) -> None:
+    """Show player's card with marked numbers bracketed."""
+    top = "┌" + ("────┬" * (BOARD_COLS - 1)) + "────┐"
+    mid = "├" + ("────┼" * (BOARD_COLS - 1)) + "────┤"
+    bot = "└" + ("────┴" * (BOARD_COLS - 1)) + "────┘"
+
+    def row_fmt(values: List[str]) -> str:
+        return " │ " + " │ ".join(values) + " │"
+
+    print(top)
     for r in range(BOARD_ROWS):
-        if all(card[r][c] in drawn for c in range(BOARD_COLS)):
-            return True
-    return False
-
-
-def _is_bingo_complete(card: List[List[int]], drawn: Set[int]) -> bool:
-    """Return True if the entire 3x5 card is completely drawn (full card)."""
-    for r in range(BOARD_ROWS):
+        row: List[str] = []
         for c in range(BOARD_COLS):
-            if card[r][c] not in drawn:
-                return False
-    return True
+            v = card[r][c]
+            if v in marked:
+                row.append(f"[{v:2d}]")
+            else:
+                row.append(f" {v:2d} ")
+        print(row_fmt(row))
+        if r < BOARD_ROWS - 1:
+            print(mid)
+    print(bot)
 
 
-def _validate_user_inputs(card: List[List[int]], drawn: Set[int], last_drawn: int, has_number: bool, claim: str | None) -> None:
-    """
-    Provide feedback about the player's inputs vs. reality.
-    (No points applied here—this is just messaging. Hook your points system here later.)
-    """
-    # Check the Y/N confirmation against the actual card membership of the drawn number
-    actually_on_card = any(last_drawn in row for row in card)
+# ---------------- Instructions screen ---------------- #
+def print_instructions() -> None:
+    print("""
+==================== MINI BINGO ====================
 
-    if has_number and not actually_on_card:
-        print("⚠️ You answered 'Y' but that number is NOT on your card. (Would be -1 point.)")
-    elif not has_number and actually_on_card:
-        print("⚠️ You answered 'N' but that number IS on your card. (Would be -1 point.)")
+Goal:
+  Mark numbers on your 3×5 card as they are drawn.
+  You can win by completing:
+    • A LINE  (any full horizontal row)
+    • BINGO   (the entire card)
 
-    # If a claim was made, verify
-    if claim == "L":
-        if _is_line_complete(card, drawn):
-            print("✅ Line claim is VALID! (Would award 10% of point pool.)")
-        else:
-            print("❌ Line claim is NOT valid. (Would be -3 points.)")
-    elif claim == "B":
-        if _is_bingo_complete(card, drawn):
-            print("🏆 Bingo claim is VALID! (Would award 50% of point pool.)")
-        else:
-            print("❌ Bingo claim is NOT valid. (Would be -3 points.)")
+Commands per round (3 seconds each):
+  1) "Do you have this number? (Y/N)"
+       Y = yes, it's on your card and you want to mark it
+       N = no
+
+  2) If you said Y, you'll be asked:
+       "Claim Line or Bingo? (L/B/N)"
+       L = claim a line
+       B = claim bingo
+       N = no claim
+
+Points:
+  • Everyone starts with starting points.
+  • Total point pool = sum of starting points of all players.
+  Rewards:
+    • Line  → +10% of pool
+    • Bingo → +50% of pool
+  Penalties:
+    • Wrong Y/N answer → -1 point
+    • False Line/Bingo claim → -3 points
+
+Multiplayer Modes:
+  Easy   → You + 4 bots   (5 players total)
+  Medium → You + 9 bots   (10 players total)
+  Hard   → You + 19 bots  (20 players total)
+
+Tips:
+  - Answer quickly! If time runs out, it's treated as "N".
+  - Only claim L/B when you're sure.
+
+=====================================================
+""")
 
 
-# ---------- Main flows ---------- #
-def sprint1_demo_only() -> None:
-    """
-    Sprint 1 scope only:
-      - Build and display the completed 3x5 card.
-    """
-    card = complete_card()
-    print_complete_card(card)
+# ---------------- Setup / Mode selection ---------------- #
+def choose_mode() -> int:
+    prompt = (
+        "\nChoose difficulty:\n"
+        "  1) Easy   (vs 4 bots)\n"
+        "  2) Medium (vs 9 bots)\n"
+        "  3) Hard   (vs 19 bots)\n"
+        "Enter 1/2/3: "
+    )
+    while True:
+        ans = input(prompt).strip()
+        if ans in ("1", "2", "3"):
+            return int(ans)
+        print(" Invalid choice. Type 1, 2, or 3.")
 
 
-def interactive_demo(turns: int = 8, seed: int | None = 42) -> None:
-    """
-    Extended demo (beyond Sprint 1):
-      - Build and display the card.
-      - Draw 'turns' numbers without repetition, show live updates.
-      - Prompt the user each turn (Y/N, optional L/B claim).
-      - Validate the player's input vs. actual card/drawn state and print feedback.
-    """
-    card = complete_card()
-    print_complete_card(card)
+def create_players(mode: int) -> List[Player]:
+    bots_count = {
+        1: int(SETTINGS["bots_easy"]),
+        2: int(SETTINGS["bots_medium"]),
+        3: int(SETTINGS["bots_hard"]),
+    }[mode]
 
-    print("\nStarting the draw…\n(Answer with Y/N, and optionally claim L (line) or B (bingo) when asked.)")
+    starting_points = int(SETTINGS["starting_points_per_player"])
 
-    # Draw numbers turn-by-turn. check_card prints the card snapshot each turn when echo=True.
-    for drawn_number, drawn_set in check_card(card, turns=turns, delay_seconds=0.0, seed=seed, echo=True):
-        # Ask player for inputs on this number
-        has_number, claim = handle_player_turn(drawn_number)
+    players: List[Player] = []
+    human_card = complete_card()
+    human = Player(name="You", card=human_card, is_bot=False, points=starting_points)
+    players.append(human)
 
-        # Validate the user's responses against the true state
-        _validate_user_inputs(card, drawn_set, drawn_number, has_number, claim)
+    for i in range(bots_count):
+        bot_card = complete_card()
+        bot = Player(name=f"Bot-{i+1}", card=bot_card, is_bot=True, points=starting_points)
+        players.append(bot)
 
-        # If bingo is complete, we can stop the demo early
-        if _is_bingo_complete(card, drawn_set):
-            print("🎉 Full card completed. Ending demo.")
-            break
+    return players
+
+
+# ---------------- Core game loop ---------------- #
+def play_game(seed: Optional[int] = None) -> None:
+    print_instructions()
+    mode = choose_mode()
+    players = create_players(mode)
+
+    human = players[0]
+    pool_total = sum(p.points for p in players)
+
+    print_complete_card(human.card)
+    print(f"\nPlayers in this match: {len(players)} (You + {len(players)-1} bots)")
+    print(f"Starting points each: {SETTINGS['starting_points_per_player']}")
+    print(f"Total point pool: {pool_total}\n")
+
+    drawer = NumberDrawer(seed=seed)
+    timeout = int(SETTINGS["input_timeout_seconds"])
+    line_pct = float(SETTINGS["line_percent"])
+    bingo_pct = float(SETTINGS["bingo_percent"])
+
+    turn = 1
+    bingo_winner: Optional[Player] = None
+
+    try:
+        while True:
+            drawn = drawer.draw_next()
+            if drawn is None:
+                print("\nNo more numbers left. Game over.")
+                break
+
+            print(f"\n========== TURN {turn} ==========")
+            print(f" Number drawn: {drawn}")
+
+            # --- Bots play ---
+            for bot in players[1:]:
+                has_num, claim = bot.bot_play_turn(drawn)
+                if claim == "L" and not bot.has_line:
+                    reward = bot.award_line(pool_total)
+                    print(f" {bot.name} claims a LINE! +{reward} points. (Total: {bot.points})")
+                if claim == "B" and not bot.has_bingo:
+                    reward = bot.award_bingo(pool_total)
+                    print(f" {bot.name} claims BINGO! +{reward} points. (Total: {bot.points})")
+                    bingo_winner = bot
+
+            if bingo_winner:
+                break
+
+            # --- Human turn ---
+            print("\nYour card right now:")
+            print_marked_card(human.card, human.marked)
+
+            ans = timed_input(f"\nDo you have {drawn}? (Y/N): ", timeout)
+            if ans is None:
+                print(" Time's up! Treated as 'N'.")
+                ans = "N"
+
+            ans = ans.strip().upper()
+            if ans not in ("Y", "N"):
+                print(" Invalid input. Treated as 'N' and -1 point penalty.")
+                human.penalize_wrong_number()
+                ans = "N"
+
+            actually_on_card = human.has_number(drawn)
+
+            if ans == "Y":
+                if actually_on_card:
+                    human.mark_number(drawn)
+                    print(" Marked!")
+                else:
+                    print(" That number is NOT on your card. -1 point.")
+                    human.penalize_wrong_number()
+            else:  # ans == "N"
+                if actually_on_card:
+                    print(" It WAS on your card. Missed it! -1 point.")
+                    human.penalize_wrong_number()
+
+            claim: Optional[str] = None
+            if ans == "Y":
+                c = timed_input("Claim Line/Bingo? (L/B/N): ", timeout)
+                if c is None:
+                    print(" Time's up! No claim.")
+                    c = "N"
+
+                c = c.strip().upper()
+                if c not in ("L", "B", "N"):
+                    print(" Invalid claim input. No claim.")
+                    c = "N"
+                if c in ("L", "B"):
+                    claim = c
+
+            # Validate claim
+            if claim == "L":
+                if (not human.has_line) and human.check_line():
+                    reward = human.award_line(pool_total)
+                    print(f" LINE COMPLETE! You gain +{reward} points.")
+                else:
+                    print(" False Line claim. -3 points.")
+                    human.penalize_false_claim()
+
+            if claim == "B":
+                if (not human.has_bingo) and human.check_bingo():
+                    reward = human.award_bingo(pool_total)
+                    print(f" BINGO!!! You gain +{reward} points.")
+                    bingo_winner = human
+                else:
+                    print(" False Bingo claim. -3 points.")
+                    human.penalize_false_claim()
+
+            print(f"\nYour points: {human.points}")
+            turn += 1
+
+            if bingo_winner:
+                break
+
+    except KeyboardInterrupt:
+        print("\n\n Game interrupted by user.")
+
+    # ---------------- End game summary ---------------- #
+    print("\n================== GAME OVER ==================")
+    if bingo_winner:
+        print(f"Winner: {bingo_winner.name} ")
+    else:
+        print("No Bingo was achieved.")
+
+    print("\nFinal points:")
+    for p in players:
+        tag = "(You)" if not p.is_bot else "(Bot)"
+        print(f"  - {p.name:6s} {tag:5s} → {p.points} pts")
+    print("===============================================")
 
 
 if __name__ == "__main__":
-    # Choose ONE of the flows below depending on what you want to demonstrate:
+    play_game(seed=None)
 
-    # 1) Strict Sprint 1: just allocate and display the card.
-    # sprint1_demo_only()
-
-    # 2) Extended interactive demo (uses input handler + live drawing).
-    interactive_demo(turns=8, seed=42)
 
 
