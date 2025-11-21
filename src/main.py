@@ -1,11 +1,11 @@
 # src/main.py
 """
-Mini Bingo Game — full version
+Mini Bingo Game — full version (NO timeouts)
 
 Implements:
 - 3x5 card per player
 - number drawing 1-90 without repetition
-- timed user input window (3s)
+- user input each round (no time limit)
 - line / bingo claims with rewards
 - penalties for wrong Y/N and false claims
 - multiplayer with bots (easy/medium/hard)
@@ -18,10 +18,7 @@ Run:
 from __future__ import annotations
 
 import os
-import sys
-import time
-import signal
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 
 from game.bingo_card import complete_card, print_complete_card, BOARD_ROWS, BOARD_COLS
 from game.number_draw import NumberDrawer
@@ -29,7 +26,6 @@ from game.player import Player
 
 # ---------------- Settings loading ---------------- #
 DEFAULT_SETTINGS = {
-    "input_timeout_seconds": 3,
     "starting_points_per_player": 100,
     "line_percent": 0.10,
     "bingo_percent": 0.50,
@@ -48,10 +44,18 @@ def load_settings() -> Dict[str, float | int]:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
-            settings["input_timeout_seconds"] = data.get("game", {}).get("input_timeout_seconds", settings["input_timeout_seconds"])
-            settings["starting_points_per_player"] = data.get("game", {}).get("starting_points_per_player", settings["starting_points_per_player"])
-            settings["line_percent"] = data.get("rewards", {}).get("line_percent", settings["line_percent"])
-            settings["bingo_percent"] = data.get("rewards", {}).get("bingo_percent", settings["bingo_percent"])
+            settings["starting_points_per_player"] = data.get("game", {}).get(
+                "starting_points_per_player",
+                settings["starting_points_per_player"],
+            )
+            settings["line_percent"] = data.get("rewards", {}).get(
+                "line_percent",
+                settings["line_percent"],
+            )
+            settings["bingo_percent"] = data.get("rewards", {}).get(
+                "bingo_percent",
+                settings["bingo_percent"],
+            )
             modes = data.get("modes", {})
             settings["bots_easy"] = modes.get("easy", {}).get("bots", settings["bots_easy"])
             settings["bots_medium"] = modes.get("medium", {}).get("bots", settings["bots_medium"])
@@ -64,43 +68,6 @@ def load_settings() -> Dict[str, float | int]:
 
 
 SETTINGS = load_settings()
-
-
-# ---------------- Timed input ---------------- #
-class _Timeout(Exception):
-    pass
-
-
-def _alarm_handler(signum, frame):
-    raise _Timeout
-
-
-def timed_input(prompt: str, timeout: int) -> Optional[str]:
-    """
-    Read input with a timeout.
-    - On Unix: uses signal.alarm.
-    - On Windows or unsupported environments: falls back to blocking input.
-    Returns None if timed out.
-    """
-    if os.name != "posix":
-        # Fallback without hard timeout
-        try:
-            return input(prompt)
-        except EOFError:
-            return None
-
-    signal.signal(signal.SIGALRM, _alarm_handler)
-    signal.alarm(timeout)
-    try:
-        ans = input(prompt)
-        signal.alarm(0)
-        return ans
-    except _Timeout:
-        signal.alarm(0)
-        return None
-    except EOFError:
-        signal.alarm(0)
-        return None
 
 
 # ---------------- Rendering helpers ---------------- #
@@ -139,7 +106,7 @@ Goal:
     • A LINE  (any full horizontal row)
     • BINGO   (the entire card)
 
-Commands per round (3 seconds each):
+Commands per round:
   1) "Do you have this number? (Y/N)"
        Y = yes, it's on your card and you want to mark it
        N = no
@@ -164,10 +131,6 @@ Multiplayer Modes:
   Easy   → You + 4 bots   (5 players total)
   Medium → You + 9 bots   (10 players total)
   Hard   → You + 19 bots  (20 players total)
-
-Tips:
-  - Answer quickly! If time runs out, it's treated as "N".
-  - Only claim L/B when you're sure.
 
 =====================================================
 """)
@@ -226,9 +189,6 @@ def play_game(seed: Optional[int] = None) -> None:
     print(f"Total point pool: {pool_total}\n")
 
     drawer = NumberDrawer(seed=seed)
-    timeout = int(SETTINGS["input_timeout_seconds"])
-    line_pct = float(SETTINGS["line_percent"])
-    bingo_pct = float(SETTINGS["bingo_percent"])
 
     turn = 1
     bingo_winner: Optional[Player] = None
@@ -261,9 +221,9 @@ def play_game(seed: Optional[int] = None) -> None:
             print("\nYour card right now:")
             print_marked_card(human.card, human.marked)
 
-            ans = timed_input(f"\nDo you have {drawn}? (Y/N): ", timeout)
-            if ans is None:
-                print(" Time's up! Treated as 'N'.")
+            try:
+                ans = input(f"\nDo you have {drawn}? (Y/N): ")
+            except EOFError:
                 ans = "N"
 
             ans = ans.strip().upper()
@@ -288,9 +248,9 @@ def play_game(seed: Optional[int] = None) -> None:
 
             claim: Optional[str] = None
             if ans == "Y":
-                c = timed_input("Claim Line/Bingo? (L/B/N): ", timeout)
-                if c is None:
-                    print(" Time's up! No claim.")
+                try:
+                    c = input("Claim Line/Bingo? (L/B/N): ")
+                except EOFError:
                     c = "N"
 
                 c = c.strip().upper()
@@ -343,6 +303,3 @@ def play_game(seed: Optional[int] = None) -> None:
 
 if __name__ == "__main__":
     play_game(seed=None)
-
-
-
