@@ -92,10 +92,10 @@ def validate_claim(is_correct_claim: bool) -> int:
         Negative for wrong claims, 0 if no claim, positive for correct.
     """
     if is_correct_claim:
-        print("✅ Claim accepted!")
+        print("Claim accepted!")
         return 0
     else:
-        print("❌ Wrong claim! -3 points penalty applied.")
+        print("Wrong claim! -3 points penalty applied.")
         return -3
 
 
@@ -104,3 +104,4 @@ if __name__ == "__main__":
     print("Testing input handler...")
     has_number, claim = handle_player_turn(42)
     print(f"has_number={has_number}, claim={claim}")
+
