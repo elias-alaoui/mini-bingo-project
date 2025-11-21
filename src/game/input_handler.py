@@ -30,7 +30,7 @@ def ask_yes_no(prompt: str = "Do you have this number? (Y/N): ") -> Literal["Y",
         response = input(prompt).strip().upper()
         if response in VALID_YES_NO:
             return response
-        print("⚠️ Invalid input. Please type 'Y' for yes or 'N' for no.")
+        print(" Invalid input. Please type 'Y' for yes or 'N' for no.")
 
 
 def ask_claim(prompt: str = "Do you want to claim a Line or Bingo? (L/B/N): ") -> Literal["L", "B", "N"]:
@@ -48,7 +48,7 @@ def ask_claim(prompt: str = "Do you want to claim a Line or Bingo? (L/B/N): ") -
         response = input(prompt).strip().upper()
         if response in VALID_CLAIMS:
             return response
-        print("⚠️ Invalid input. Please type 'L' for line, 'B' for bingo, or 'N' for no claim.")
+        print(" Invalid input. Please type 'L' for line, 'B' for bingo, or 'N' for no claim.")
 
 
 def handle_player_turn(drawn_number: int) -> tuple[bool, Optional[str]]:
@@ -63,7 +63,7 @@ def handle_player_turn(drawn_number: int) -> tuple[bool, Optional[str]]:
         - has_number: True if player confirmed having the number (Y)
         - claim: "L" (line), "B" (bingo), or None
     """
-    print(f"\n🎲 Number drawn: {drawn_number}")
+    print(f"\n Number drawn: {drawn_number}")
 
     # Ask if player has the number
     response = ask_yes_no()
@@ -104,4 +104,5 @@ if __name__ == "__main__":
     print("Testing input handler...")
     has_number, claim = handle_player_turn(42)
     print(f"has_number={has_number}, claim={claim}")
+
 
