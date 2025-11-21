@@ -35,8 +35,7 @@ You will be asked:
 - `Y` = Yes, the number is on your card → it will be marked
 - `N` = No, the number is not on your card
 
-If you enter something invalid or run out of time:
-- The game treats it as `N`
+If you enter something invalid:
 - You may lose points if that was wrong.
 
 ### Step B — Claim a win (only if you answered Y)
@@ -132,7 +131,6 @@ During the game you will see:
 - Look carefully before answering (Y/N).
 - Claim only when you're sure.
 - A wrong claim costs more than a missed number.
-- Fast responses matter — you only get 3 seconds.
 
 ---
 
@@ -159,3 +157,4 @@ You’ll then see:
 ---
 
 Enjoy the game and good luck! 
+
