@@ -19,8 +19,7 @@ Our goal is to build a **simple, fair, and accessible** Bingo game you can play 
 - **Game-mode:** Choose the game-mode which best suits the difficulty you are seeking (easy, medium or hard).
 
 **Points system (project-level rule):**
-- Start with **20** points.  
-- **–2** points to enter each round.  
+- Start with **100** points.  
 - **+10%** of the point pool for a **line**; **+50%** for **bingo**.  
 - **–1** for an incorrect number input.  
 - **–3** for a false `line`/`bingo` claim.
@@ -160,8 +159,7 @@ board:
   number_range: [1, 90]
 
 points:
-  start: 20
-  round_entry: 2
+  start: 100
   line_reward: 0.10
   bingo_reward: 0.50
   wrong_input_penalty: -1

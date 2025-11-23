@@ -19,6 +19,7 @@ Run:
 from __future__ import annotations
 
 import os
+import sys
 from typing import Dict, List, Optional, Set
 
 from game.bingo_card import complete_card, BOARD_ROWS, BOARD_COLS
@@ -70,6 +71,14 @@ def load_settings() -> Dict[str, float | int]:
 
 
 SETTINGS = load_settings()
+
+
+# ---------------- Utility ---------------- #
+def exit_if_requested(text: str) -> None:
+    """Exit the program if the user typed 'exit' (case-insensitive)."""
+    if text.strip().lower() == "exit":
+        print("\nExiting game. Goodbye.")
+        sys.exit(0)
 
 
 # ---------------- PRETTY CARD PRINTER (NEW) ---------------- #
@@ -149,6 +158,9 @@ Multiplayer Modes:
   Medium → You + 9 bots   (10 players total)
   Hard   → You + 19 bots  (20 players total)
 
+Note:
+  At any moment, type 'exit' to terminate the program immediately.
+
 =====================================================
 """)
 
@@ -160,13 +172,14 @@ def choose_mode() -> int:
         "  1) Easy   (vs 4 bots)\n"
         "  2) Medium (vs 9 bots)\n"
         "  3) Hard   (vs 19 bots)\n"
-        "Enter 1/2/3: "
+        "Enter 1/2/3 or type 'exit' to quit: "
     )
     while True:
         ans = input(prompt).strip()
+        exit_if_requested(ans)
         if ans in ("1", "2", "3"):
             return int(ans)
-        print("Invalid choice. Type 1, 2, or 3.")
+        print("Invalid choice. Type 1, 2, or 3 (or 'exit' to quit).")
 
 
 def create_players(mode: int) -> List[Player]:
@@ -227,10 +240,10 @@ def play_game(seed: Optional[int] = None) -> None:
                 has_num, claim = bot.bot_play_turn(drawn)
                 if claim == "L" and not bot.has_line:
                     reward = bot.award_line(pool_total)
-                    print(f"🤖 {bot.name} claims a LINE! +{reward} points. (Total: {bot.points})")
+                    print(f"{bot.name} claims a LINE! +{reward} points. (Total: {bot.points})")
                 if claim == "B" and not bot.has_bingo:
                     reward = bot.award_bingo(pool_total)
-                    print(f"🤖 {bot.name} claims BINGO! +{reward} points. (Total: {bot.points})")
+                    print(f"{bot.name} claims BINGO! +{reward} points. (Total: {bot.points})")
                     bingo_winner = bot
 
             if bingo_winner:
@@ -245,6 +258,7 @@ def play_game(seed: Optional[int] = None) -> None:
             except EOFError:
                 ans = "N"
 
+            exit_if_requested(ans)
             ans = ans.strip().upper()
             if ans not in ("Y", "N"):
                 print("Invalid input. Treated as 'N' and -1 point penalty.")
@@ -272,6 +286,7 @@ def play_game(seed: Optional[int] = None) -> None:
                 except EOFError:
                     c = "N"
 
+                exit_if_requested(c)
                 c = c.strip().upper()
                 if c not in ("L", "B", "N"):
                     print("Invalid claim input. No claim.")
